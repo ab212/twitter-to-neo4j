@@ -3,7 +3,7 @@ package com.godatadriven.twitter_classifier
 import org.apache.spark.SparkConf
 import org.apache.spark.streaming.twitter.TwitterUtils
 import org.apache.spark.streaming.{Seconds, StreamingContext}
-import org.neo4j.driver.internal.value.StringValue
+import org.neo4j.driver.internal.value.{ListValue, StringValue}
 import org.neo4j.driver.v1.{GraphDatabase, Value}
 
 import scala.collection.JavaConversions._
@@ -15,9 +15,11 @@ case class Program(checkpointDirectory: String) {
   val maxTwitterNameLength = 15
   val nameRegex = s"([a-zA-Z0-9_]{1,$maxTwitterNameLength})".r
   val insertStatement =
-    """MERGE (u:User {username: {username}})
-       MERGE (m:User {username: {mentions}})
-       MERGE (u)-[:MENTIONS]->(m)
+    """WITH {mentions} as mentions
+      |MERGE (u:User {username: {username}})
+      |CREATE (t:Tweet {text: {text}})
+      |CREATE (u)-[:TWEETS]->(t)
+      |foreach(name in mentions | MERGE (m:User {username: name}) CREATE (t)-[:MENTIONS]->(m))
     """.stripMargin
 
   def run(): Unit = {
@@ -28,8 +30,9 @@ case class Program(checkpointDirectory: String) {
 
   private def createStreamingContext(): StreamingContext = {
     val sparkConfig = new SparkConf().setAppName("Spark Twitter Example")
+    sparkConfig.set("spark.streaming.backpressure.enabled","true")
 
-    val streamingContext = new StreamingContext(sparkConfig, Seconds(10))
+    val streamingContext = new StreamingContext(sparkConfig, Seconds(30))
 
     // Input stream:
     val allTweets = TwitterUtils.createStream(streamingContext, None)
@@ -37,15 +40,25 @@ case class Program(checkpointDirectory: String) {
     allTweets.foreachRDD { rdd =>
       rdd.partitions.length
       rdd.foreachPartition { partition =>
-        val session = GraphDatabase.driver("bolt://localhost").session()
+        val driver = GraphDatabase.driver("bolt://localhost")
+        val session = driver.session()
         partition.foreach { record =>
-          if (record.getUserMentionEntities.length > 0) {
+          if (! record.isRetweet) {
             val user = record.getUser
-            val mentions = record.getUserMentionEntities.apply(0)
-            session.run(insertStatement, scala.collection.mutable.Map[String, Value]("username" -> new StringValue(user.getScreenName), "mentions" -> new StringValue(mentions.getScreenName)))
+            val userName = new StringValue(user.getScreenName)
+            val text = new StringValue(record.getText)
+            val mentionNames: Array[Value] = record.getUserMentionEntities.map{x => new StringValue(x.getScreenName)}
+            val mentions = new ListValue(mentionNames:_*)
+            session.run(insertStatement,
+              scala.collection.mutable.Map[String, Value](
+                "username" -> userName,
+                "mentions" -> mentions,
+                "text" -> text))
             //          println("userScreenName: " + user.getScreenName + " username: " + user.getName)
           }
         }
+        session.close()
+        driver.close()
       }
     }
 
