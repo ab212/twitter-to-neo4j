@@ -9,6 +9,7 @@ import org.neo4j.driver.v1.{GraphDatabase, Value}
 import scala.collection.JavaConversions._
 
 case class Program(checkpointDirectory: String) {
+  val languages = Array[String]("en", "en-gb", "nl")
   val windowDuration = Seconds(30)
   val slideDuration = Seconds(5)
   val topUserCount = 3
@@ -17,7 +18,7 @@ case class Program(checkpointDirectory: String) {
   val insertStatement =
     """WITH {mentions} as mentions
       |MERGE (u:User {username: {username}})
-      |CREATE (t:Tweet {text: {text}})
+      |CREATE (t:Tweet {text: {text}, language: {language}})
       |CREATE (u)-[:TWEETS]->(t)
       |foreach(name in mentions | MERGE (m:User {username: name}) CREATE (t)-[:MENTIONS]->(m))
     """.stripMargin
@@ -32,10 +33,11 @@ case class Program(checkpointDirectory: String) {
     val sparkConfig = new SparkConf().setAppName("Spark Twitter Example")
     sparkConfig.set("spark.streaming.backpressure.enabled","true")
 
-    val streamingContext = new StreamingContext(sparkConfig, Seconds(30))
+    val streamingContext = new StreamingContext(sparkConfig, Seconds(1))
 
     // Input stream:
-    val allTweets = TwitterUtils.createStream(streamingContext, None)
+
+    val allTweets = TwitterUtils.createStream(streamingContext, None)//, filters = filters)
 
     allTweets.foreachRDD { rdd =>
       rdd.partitions.length
@@ -43,7 +45,8 @@ case class Program(checkpointDirectory: String) {
         val driver = GraphDatabase.driver("bolt://localhost")
         val session = driver.session()
         partition.foreach { record =>
-          if (! record.isRetweet) {
+            val language: String = record.getUser.getLang.toLowerCase
+          if (! record.isRetweet && languages.contains(language) ) {
             val user = record.getUser
             val userName = new StringValue(user.getScreenName)
             val text = new StringValue(record.getText)
@@ -53,7 +56,8 @@ case class Program(checkpointDirectory: String) {
               scala.collection.mutable.Map[String, Value](
                 "username" -> userName,
                 "mentions" -> mentions,
-                "text" -> text))
+                "text" -> text,
+                "language" -> new StringValue(language)))
             //          println("userScreenName: " + user.getScreenName + " username: " + user.getName)
           }
         }
