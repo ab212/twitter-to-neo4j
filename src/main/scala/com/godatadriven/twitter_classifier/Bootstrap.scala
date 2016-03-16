@@ -6,7 +6,6 @@ object Bootstrap {
       System.err.println("You must provide the checkpoint directory")
       System.exit(1)
     }
-
-    Program(args.head).run()
+    StoreToNeo4j(args.head).run()
   }
 }
