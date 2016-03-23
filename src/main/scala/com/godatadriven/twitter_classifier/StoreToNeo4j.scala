@@ -1,21 +1,19 @@
 package com.godatadriven.twitter_classifier
 
-import java.util.concurrent.{TimeoutException, TimeUnit}
-import org.apache.spark.streaming.dstream.ReceiverInputDStream
-import org.neo4j.driver.internal.messaging.SuccessMessage
+import java.util.concurrent.{TimeUnit, TimeoutException}
 
-import scala.concurrent.ExecutionContext.Implicits.global
-import org.apache.spark.{Accumulator, SparkConf}
+import com.google.gson.Gson
 import org.apache.spark.streaming.twitter.TwitterUtils
 import org.apache.spark.streaming.{Seconds, StreamingContext}
+import org.apache.spark.{Accumulator, SparkConf}
 import org.neo4j.driver.internal.value.{ListValue, StringValue}
-import org.neo4j.driver.v1.{ResultCursor, Session, GraphDatabase, Value}
+import org.neo4j.driver.v1.{GraphDatabase, Session, Value}
 import twitter4j.Status
-import com.google.gson.Gson
 
 import scala.collection.JavaConversions._
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Future, Await}
+import scala.concurrent.{Await, Future}
 
 case class StoreToNeo4j(checkpointDirectory: String) {
   val languages = Array[String]("en", "en-gb", "nl")
@@ -37,7 +35,7 @@ case class StoreToNeo4j(checkpointDirectory: String) {
 
   private def createStreamingContext(): StreamingContext = {
     val sparkConfig = new SparkConf().setAppName("Spark Twitter Example")
-    sparkConfig.set("spark.streaming.backpressure.enabled","true")
+    sparkConfig.set("spark.streaming.backpressure.enabled", "true")
 
     val streamingContext = new StreamingContext(sparkConfig, Seconds(1))
     val failedMessages: Accumulator[Int] = streamingContext.sparkContext.accumulator(0, "failedMessages")
@@ -66,12 +64,12 @@ case class StoreToNeo4j(checkpointDirectory: String) {
   }
 
   def processRecord(session: Session, record: Status): Unit = {
-    if (shouldProcessRecord(record) ) {
+    if (shouldProcessRecord(record)) {
       val user = record.getUser
       val userName = new StringValue(user.getScreenName)
       val text = new StringValue(record.getText)
-      val mentionNames: Array[Value] = record.getUserMentionEntities.map{x => new StringValue(x.getScreenName)}
-      val mentions = new ListValue(mentionNames:_*)
+      val mentionNames: Array[Value] = record.getUserMentionEntities.map { x => new StringValue(x.getScreenName) }
+      val mentions = new ListValue(mentionNames: _*)
       val tweet = scala.collection.mutable.Map[String, Value](
           "username" -> userName,
           "mentions" -> mentions,
@@ -85,7 +83,7 @@ case class StoreToNeo4j(checkpointDirectory: String) {
 
   def shouldProcessRecord(record: Status): Boolean = {
     val language: String = record.getUser.getLang.toLowerCase
-//    !record.isRetweet && languages.contains(language)
+    //    !record.isRetweet && languages.contains(language)
     true
   }
 }
