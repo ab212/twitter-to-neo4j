@@ -4,22 +4,22 @@ import com.google.gson.annotations.SerializedName;
 
 public class Tweet {
   @SerializedName("id")
-  public String tweetId;
+  private String tweetId;
 
   @SerializedName("text")
-  public String text;
+  private String text;
 
   @SerializedName("inReplyToScreenName")
-  public String inReplyToScreenName;
+  private String inReplyToScreenName;
 
   @SerializedName("user")
-  public User user;
+  private User user;
 
   @SerializedName("source")
-  public String source;
+  private String source;
 
   @SerializedName("userMentionEntities")
-  public User[] userMentionEntities;
+  private User[] userMentionEntities;
 
   public String getSource() {
     return source;

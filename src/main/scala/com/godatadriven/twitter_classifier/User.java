@@ -4,10 +4,10 @@ import com.google.gson.annotations.SerializedName;
 
 public class User {
   @SerializedName("screenName")
-  public String screenName;
+  private String screenName;
 
   @SerializedName("lang")
-  public String language;
+  private String language;
 
   public String getScreenName() {
     return screenName;

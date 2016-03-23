@@ -70,9 +70,8 @@ object KafkaToNeo4j {
             driver.close()
           }, Duration.apply(10, TimeUnit.SECONDS))
         } catch {
-          case e: TimeoutException => {
+          case e: TimeoutException =>
             println("xxxxxxxxx")
-          }
         }
       }
 
@@ -86,14 +85,13 @@ object KafkaToNeo4j {
         parseTweet(transaction, json)
       }, Duration.apply(600, TimeUnit.MILLISECONDS))
     } catch {
-      case e: TimeoutException => {
+      case e: TimeoutException =>
         println(json)
-      }
     }
   }
 
   def parseTweet(transaction: Transaction, json: String) = {
-    val gson = new GsonBuilder().create();
+    val gson = new GsonBuilder().create()
     val record = gson.fromJson(json, classOf[Tweet])
     val text = new StringValue(record.getText)
     val userName = new StringValue(record.getUser.getScreenName)
