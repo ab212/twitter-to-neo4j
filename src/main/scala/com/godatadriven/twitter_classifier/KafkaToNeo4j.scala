@@ -2,16 +2,15 @@ package com.godatadriven.twitter_classifier
 
 import java.util.concurrent.{TimeUnit, TimeoutException}
 
-import com.google.gson.{GsonBuilder, Gson}
+import com.google.common.base.Stopwatch
+import com.google.gson.GsonBuilder
 import kafka.serializer.StringDecoder
+import org.apache.spark.SparkConf
 import org.apache.spark.api.java.StorageLevels
 import org.apache.spark.streaming.kafka.KafkaUtils
 import org.apache.spark.streaming.{Seconds, StreamingContext}
-import org.apache.spark.{Accumulator, SparkConf}
 import org.neo4j.driver.internal.value.{ListValue, StringValue}
-import org.neo4j.driver.v1.{GraphDatabase, Session, Value}
-import twitter4j.Status
-import twitter4j.json.DataObjectFactory
+import org.neo4j.driver.v1._
 
 import scala.collection.JavaConversions._
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -28,11 +27,11 @@ object KafkaToNeo4j {
       |foreach(name in mentions | MERGE (m:User {username: name}) CREATE (t)-[:MENTIONS]->(m))
     """.stripMargin
 
-    val kafkaConsumerParams: Map[String, String] = Map(
-        "zookeeper.connect" -> "localhost:2181",
-        "group.id" -> "kafka-to-neo4j",
-        "auto.offset.reset" -> "largest"
-      )
+  val kafkaConsumerParams: Map[String, String] = Map(
+    "zookeeper.connect" -> "localhost:2181",
+    "group.id" -> "kafka-to-neo4j",
+    "auto.offset.reset" -> "largest"
+  )
   val topics: Map[String, Int] = Map(
     "tweets" -> 36
   )
@@ -50,59 +49,62 @@ object KafkaToNeo4j {
   private def createStreamingContext(): StreamingContext = {
     val sparkConfig = new SparkConf().setAppName("Spark Twitter Example")
     sparkConfig.set("spark.streaming.backpressure.enabled", "true")
-    sparkConfig.set("spark.streaming.receiver.maxRate", "1000")
+    sparkConfig.set("spark.streaming.receiver.maxRate", "5000")
 
     val streamingContext = new StreamingContext(sparkConfig, Seconds(1))
-    val failedMessages: Accumulator[Int] = streamingContext.sparkContext.accumulator(0, "failedMessages")
-    val successMessages: Accumulator[Int] = streamingContext.sparkContext.accumulator(0, "successMessages")
     val allTweets = KafkaUtils.createStream[String,String,StringDecoder, StringDecoder](streamingContext, kafkaConsumerParams, topics, StorageLevels.MEMORY_ONLY)
 
     allTweets.foreachRDD { rdd =>
       rdd.foreachPartition { partition =>
-        val driver = GraphDatabase.driver("bolt://localhost")
-        val session = driver.session()
-        partition.foreach { record =>
-          try {
-            processRecord(session, record._2)
-            Await.ready(Future {
-            }, Duration.apply(100, TimeUnit.MILLISECONDS))
-            successMessages.add(1)
-          } catch {
-            case e: TimeoutException => failedMessages.add(1)
+        try {
+          Await.ready(Future {
+            val driver = GraphDatabase.driver("bolt://localhost", AuthTokens.basic("neo4j", "test"))
+            val session = driver.session()
+            val transaction = session.beginTransaction()
+            partition.foreach { record =>
+              processRecord(transaction, record._2)
+            }
+            transaction.success()
+            transaction.close()
+            session.close()
+            driver.close()
+          }, Duration.apply(10, TimeUnit.SECONDS))
+        } catch {
+          case e: TimeoutException => {
+            println("xxxxxxxxx")
           }
         }
-        session.close()
-        driver.close()
       }
+
     }
     streamingContext
   }
 
-  def processRecord(session: Session, json: String): Unit = {
+  def processRecord(transaction: Transaction, json: String): Unit = {
+    try {
+      Await.ready(Future {
+        parseTweet(transaction, json)
+      }, Duration.apply(600, TimeUnit.MILLISECONDS))
+    } catch {
+      case e: TimeoutException => {
+        println(json)
+      }
+    }
+  }
+
+  def parseTweet(transaction: Transaction, json: String) = {
     val gson = new GsonBuilder().create();
     val record = gson.fromJson(json, classOf[Tweet])
-    if (shouldProcessRecord(record)) {
-      val user = record.getUser
-      if (user == null) {
-        println("xxxxxx: user == null. JSON: " + json)
-      }
-      val userName = new StringValue(user.getScreenName)
-      val text = new StringValue(record.getText)
-      val mentionNames: Array[Value] = record.getUserMentionEntities.map { x => new StringValue(x.getScreenName) }
-      val mentions = new ListValue(mentionNames: _*)
-      val tweet = scala.collection.mutable.Map[String, Value](
+    val text = new StringValue(record.getText)
+    val userName = new StringValue(record.getUser.getScreenName)
+    val mentionNames: Array[Value] = record.getUserMentionEntities.map { x => new StringValue(x.getScreenName) }
+    val mentions = new ListValue(mentionNames: _*)
+    val tweet = scala.collection.mutable.Map[String, Value](
         "username" -> userName,
         "mentions" -> mentions,
         "text" -> text,
         "source" -> new StringValue(record.getSource),
-        "language" -> new StringValue(record.getUser.getLanguage.toLowerCase))
-      session.run(insertStatement, tweet)
-    }
-  }
-
-  def shouldProcessRecord(record: Tweet): Boolean = {
-    val language: String = record.getUser.getLanguage.toLowerCase
-    //    !record.isRetweet && languages.contains(language)
-    true
+        "language" -> new StringValue(record.getUser.getLanguage))
+    transaction.run(insertStatement, tweet)
   }
 }

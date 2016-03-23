@@ -2,9 +2,10 @@ package com.godatadriven.twitter_classifier;
 
 import com.google.gson.annotations.SerializedName;
 
-import java.util.List;
-
 public class Tweet {
+  @SerializedName("id")
+  public String tweetId;
+
   @SerializedName("text")
   public String text;
 
@@ -58,5 +59,13 @@ public class Tweet {
 
   public void setUserMentionEntities(User[] userMentionEntities) {
     this.userMentionEntities = userMentionEntities;
+  }
+
+  public String getTweetId() {
+    return tweetId;
+  }
+
+  public void setTweetId(String tweetId) {
+    this.tweetId = tweetId;
   }
 }
