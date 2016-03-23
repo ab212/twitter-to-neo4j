@@ -13,4 +13,13 @@ class KafkaToNeo4jSpec extends FlatSpec with Matchers {
     tweet.inReplyToScreenName should be("lalydo")
     tweet.user.screenName should be("Labroussefranc2")
   }
+
+  "The twitterparser" should "also be able to parse the harder stored json" in {
+      val reader: String = Source.fromInputStream(getClass.getResourceAsStream("/test2.json"), "UTF-8").mkString
+      val gson = new GsonBuilder().create();
+      val tweet = gson.fromJson(reader, classOf[Tweet])
+      tweet.inReplyToScreenName should be(null)
+      tweet.user.screenName should be("MarujaHurtado")
+      tweet.text should be("RT @verdadesofenden: Andalucía en 2018, según @vox_es https://t.co/e2lcVpi9gj")
+    }
 }
