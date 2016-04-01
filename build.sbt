@@ -16,7 +16,10 @@ libraryDependencies ++= Seq("org.apache.spark" %% "spark-core" % "1.5.0",
                             "org.slf4j" % "slf4j-log4j12" % "1.7.10",
                             "com.google.code.gson" % "gson" % "2.6.2",
                             "org.scalactic" %% "scalactic" % "2.2.6",
-                            "org.scalatest" %% "scalatest" % "2.2.6" % "test")
+                            "org.scalatest" %% "scalatest" % "2.2.6" % "test",
+                            "io.prometheus" % "simpleclient_pushgateway" % "0.0.14")
+
+libraryDependencies += "org.specs2" %% "specs2-core" % "2.3.7" % "test"
 
 assemblyMergeStrategy in assembly := {
   case PathList("javax", "xml", xs @ _*) => MergeStrategy.last

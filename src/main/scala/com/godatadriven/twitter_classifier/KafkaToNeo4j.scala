@@ -30,7 +30,7 @@ object KafkaToNeo4j {
   val kafkaConsumerParams: Map[String, String] = Map(
     "zookeeper.connect" -> "localhost:2181",
     "group.id" -> "kafka-to-neo4j",
-    "auto.offset.reset" -> "largest"
+    "auto.offset.reset" -> "smallest"
   )
   val topics: Map[String, Int] = Map(
     "tweets" -> 36
@@ -52,6 +52,7 @@ object KafkaToNeo4j {
     sparkConfig.set("spark.streaming.receiver.maxRate", "5000")
 
     val streamingContext = new StreamingContext(sparkConfig, Seconds(1))
+    streamingContext.addStreamingListener(new PrometheusSparkMetrics(streamingContext.sparkContext.appName))
     val allTweets = KafkaUtils.createStream[String,String,StringDecoder, StringDecoder](streamingContext, kafkaConsumerParams, topics, StorageLevels.MEMORY_ONLY)
 
     allTweets.foreachRDD { rdd =>
